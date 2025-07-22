@@ -43,7 +43,7 @@ This quantized auto-encoder module handles the actual compression and decompress
 
 The architecture and data flow of the SAIC system can be visualized in the following diagram:
 
-![Mermaid Diagram](assets/architecture.svg)
+![Mermaid Diagram](asset/architecture.svg)
 
 ## Features
 
