@@ -50,6 +50,15 @@ class GroundingSAM:
         else:
             self.segmenter_id = segmenter_id
 
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        # DINO
+        self.detector = pipeline(model=self.detector_id, task="zero-shot-object-detection", device=device)
+
+        # SAM
+        self.segmenter = AutoModelForMaskGeneration.from_pretrained(self.segmenter_id).to(device)
+        self.segmenter_processor = AutoProcessor.from_pretrained(self.segmenter_id)
+
     def _get_boxes(self, results: DetectionResult) -> List[List[List[float]]]:
         boxes = []
         for result in results:
@@ -119,12 +128,9 @@ class GroundingSAM:
         """
         Use Grounding DINO to detect a set of labels in an image in a zero-shot fashion.
         """
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        object_detector = pipeline(model=self.detector_id, task="zero-shot-object-detection", device=device)
-
         labels = [label if label.endswith(".") else label+"." for label in labels]
 
-        results = object_detector(image,  candidate_labels=labels, threshold=threshold)
+        results = self.detector(image,  candidate_labels=labels, threshold=threshold)
         results = [DetectionResult.from_dict(result) for result in results]
 
         return results
@@ -138,16 +144,12 @@ class GroundingSAM:
         """
         Use Segment Anything (SAM) to generate masks given an image + a set of bounding boxes.
         """
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-
-        segmentator = AutoModelForMaskGeneration.from_pretrained(self.segmenter_id).to(device)
-        processor = AutoProcessor.from_pretrained(self.segmenter_id)
 
         boxes = self._get_boxes(detection_results)
-        inputs = processor(images=image, input_boxes=boxes, return_tensors="pt").to(device)
+        inputs = self.segmenter_processor(images=image, input_boxes=boxes, return_tensors="pt").to(device)
 
-        outputs = segmentator(**inputs)
-        masks = processor.post_process_masks(
+        outputs = self.segmenter(**inputs)
+        masks = self.segmenter_processor.post_process_masks(
             masks=outputs.pred_masks,
             original_sizes=inputs.original_sizes,
             reshaped_input_sizes=inputs.reshaped_input_sizes
@@ -167,6 +169,7 @@ class GroundingSAM:
             threshold: float = 0.3,
             polygon_refinement: bool = False):
         
+        self._load_models()
         detections = self._detect(image, labels, threshold)
         detections = self._segment(image, detections, polygon_refinement)
 
