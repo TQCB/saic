@@ -1,0 +1,72 @@
+graph TD
+    A[Image]
+    B[Text]
+
+    subgraph "SAIC"
+        subgraph "Semantic Saliency Module"
+            subgraph "Semantic Understanding"
+                DINO("Grounding DINO")
+                BB(["Bounding Box"])
+            end
+
+            subgraph "Segmentation"
+                SAM("SAM")
+                M(["Saliency Map"])
+            end
+        end
+
+
+        subgraph "Spatial Compression Module"
+            GE(Encoder);
+            ALAT(["Latent Image $$\\ (y)$$"]);
+            MLAT(["Latent Mask $$\\ (M_{base})$$"]);
+
+            subgraph "Compression"
+                subgraph "Saliency-Guided Quantizer Q"
+                    DELTA("$$\Delta(i,j) = \frac{\Delta_{base}}{1+\beta\times M_{latent}(i,j)}$$");
+                    QE("$$round(\frac{x(i,j)}{\Delta(i,j)})$$")
+                end
+
+                subgraph "Bit Encoding"
+                    EC("Entropy Coder")
+                    CB(["Compressed Bitstream"])
+                end
+            end
+
+            subgraph "Decompression"
+                ED("Entropy Decoder");
+                GD("Decoder");
+            end
+        end
+    end
+
+COUT["Compressed File Output"]
+IOUT["Reconstructued Image Output"]
+
+%% DINO creates bounding boxes from image and text, which are then segmented by SAM
+A --> DINO;
+B --> DINO;
+DINO --> BB;
+BB --> SAM;
+SAM --> M;
+
+%% Image and saliency map are encoded into latent space
+A --> GE;
+M --> GE;
+GE --> ALAT;
+GE --> MLAT;
+
+%% We use the latent saliency map to calculate delta for our entropy encoder, which is applied to our image
+MLAT --> DELTA;
+ALAT --> QE;
+DELTA --> QE;
+
+%% The quantized image is entropy coded and we get our resulting bitstream
+QE --> EC;
+EC --> CB;
+CB --> COUT;
+
+%% If we want to decode our image, the bitstream gets entropy decoded, and then reconstructed using our decoder
+CB --> ED;
+ED -- "Quantized $$\\ \hat{y}$$" --> GD;
+GD -- "Reconstructed image $$\\ \hat{x}$$" --> IOUT;
