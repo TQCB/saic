@@ -50,13 +50,13 @@ class GroundingSAM:
         else:
             self.segmenter_id = segmenter_id
 
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        self._device = "cuda" if torch.cuda.is_available() else "cpu"
 
         # DINO
-        self.detector = pipeline(model=self.detector_id, task="zero-shot-object-detection", device=device)
+        self.detector = pipeline(model=self.detector_id, task="zero-shot-object-detection", device=self._device)
 
         # SAM
-        self.segmenter = AutoModelForMaskGeneration.from_pretrained(self.segmenter_id).to(device)
+        self.segmenter = AutoModelForMaskGeneration.from_pretrained(self.segmenter_id).to(self._device)
         self.segmenter_processor = AutoProcessor.from_pretrained(self.segmenter_id)
 
     def _get_boxes(self, results: DetectionResult) -> List[List[List[float]]]:
@@ -146,7 +146,7 @@ class GroundingSAM:
         """
 
         boxes = self._get_boxes(detection_results)
-        inputs = self.segmenter_processor(images=image, input_boxes=boxes, return_tensors="pt").to(device)
+        inputs = self.segmenter_processor(images=image, input_boxes=boxes, return_tensors="pt").to(self._device)
 
         outputs = self.segmenter(**inputs)
         masks = self.segmenter_processor.post_process_masks(
@@ -169,8 +169,15 @@ class GroundingSAM:
             threshold: float = 0.3,
             polygon_refinement: bool = False):
         
-        self._load_models()
         detections = self._detect(image, labels, threshold)
         detections = self._segment(image, detections, polygon_refinement)
 
         return detections
+    
+    def __call__(
+            self,
+            image: Image.Image,
+            labels: List[str],
+            threshold: float = 0.3,
+            polygon_refinement: bool = False):
+        return self.grounded_segmentation(image, labels, threshold, polygon_refinement)
