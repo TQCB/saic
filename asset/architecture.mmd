@@ -1,6 +1,6 @@
 graph TD
-    A[Image]
-    B[Text]
+    IMG[Image]
+    TXT[Text]
 
     subgraph "SAIC"
         subgraph "Semantic Saliency Module"
@@ -15,58 +15,99 @@ graph TD
             end
         end
 
-
         subgraph "Spatial Compression Module"
-            GE(Encoder);
-            ALAT(["Latent Image $$\\ (y)$$"]);
-            MLAT(["Latent Mask $$\\ (M_{base})$$"]);
+        X(["$$x$$"])
+        Y(["$$y$$"])
+        Y_HAT(["$$\hat y$$"])
 
-            subgraph "Compression"
-                subgraph "Saliency-Guided Quantizer Q"
-                    DELTA("$$\Delta(i,j) = \frac{\Delta_{base}}{1+\beta\times M_{latent}(i,j)}$$");
-                    QE("$$round(\frac{x(i,j)}{\Delta(i,j)})$$")
-                end
+        CONC("Concatenate")
+        Q("Quantizer")
+        GA("Analysis Transform")
+        GS("Synthesis Transform")
+        MC("Masked Convolution")
+        CNET("1x1 Conv")
 
-                subgraph "Bit Encoding"
-                    EC("Entropy Coder")
-                    CB(["Compressed Bitstream"])
-                end
+            subgraph "Hyperlatent Module"
+            HA("Hyper-Analysis Transform")
+            HQ("Hyper-Quantizer")
+            HS("Hyper-Synthesis Transform")
+            HE("Hyper-Entropy Model")
+
+            Z(["$$z$$"])
+            Z_HAT(["$$\hat z$$"])
+
             end
 
-            subgraph "Decompression"
-                ED("Entropy Decoder");
-                GD("Decoder");
-            end
+        MS(["$$\mu , \sigma$$"])
+        E("Entropy Model")
         end
     end
 
-COUT["Compressed File Output"]
-IOUT["Reconstructued Image Output"]
+X_HAT(["$$\hat x$$"])
+RZ(["$$R_{\hat z}$$"])
+RY(["$$R_{\hat y}$$"])
+
+%% ===================
+%% ===== MASKING =====
+%% ===================
 
 %% DINO creates bounding boxes from image and text, which are then segmented by SAM
-A --> DINO;
-B --> DINO;
+IMG --> DINO;
+TXT --> DINO;
 DINO --> BB;
 BB --> SAM;
 SAM --> M;
 
-%% Image and saliency map are encoded into latent space
-A --> GE;
-M --> GE;
-GE --> ALAT;
-GE --> MLAT;
+%% =======================
+%% ===== COMPRESSION =====
+%% =======================
 
-%% We use the latent saliency map to calculate delta for our entropy encoder, which is applied to our image
-MLAT --> DELTA;
-ALAT --> QE;
-DELTA --> QE;
+%% Image and saliency map are concatenated into a 4 channel image tensor
+IMG --> CONC;
+M --> CONC;
+CONC --> X;
 
-%% The quantized image is entropy coded and we get our resulting bitstream
-QE --> EC;
-EC --> CB;
-CB --> COUT;
+%% x is passed through the analysis transform
+%% y is then quantized into y_hat
+%% y_hat passes through the entropy model
+%% y_hat is reconstructed into x_hat using the synthesis transform
+X --> GA;
+GA --> Y;
+Y --> Q;
+Q --> Y_HAT;
 
-%% If we want to decode our image, the bitstream gets entropy decoded, and then reconstructed using our decoder
-CB --> ED;
-ED -- "Quantized $$\\ \hat{y}$$" --> GD;
-GD -- "Reconstructed image $$\\ \hat{x}$$" --> IOUT;
+%% We also run masked convolution on y_hat 
+%% And then joint convolution with synthesized z
+%% to predict mu and sigma that will help our entropy model
+%% (local context)
+Y_HAT --> MC;
+HS --> CNET;
+MC --> CNET;
+
+%% This local context model combined with the hyperprior allows for estimation
+%% of pdf parameters
+CNET --> MS;
+Y_HAT --> E;
+MS --> E;
+
+E --> GS;
+GS --> X_HAT;
+
+E --> RY
+
+%% ======================
+%% ===== HYPERPRIOR =====
+%% ======================
+
+%% y is passed through the hyper network to find z, which is quantized to z_hat
+Y --> HA;
+HA --> Z
+Z --> HQ;
+HQ --> Z_HAT;
+
+%% Rz is found with the hyper entropy model
+Z_HAT --> HE;
+HE --> RZ;
+
+%% Synthesize z
+Z_HAT --> HS;
