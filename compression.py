@@ -6,6 +6,8 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+from loss import RateDistortionLoss
+
 class GDN(nn.Module):
     def __init__(self, channels, inverse=False, beta_min=1e-8, gamma_init=0.1):
         """
@@ -15,7 +17,8 @@ class GDN(nn.Module):
         images using a generalized normalization transformation. International
         Conference on Learning Representations (ICLR).
 
-
+        NOTE this is the simplified implementation without alpha and epsilon.
+        NOTE need to test whether this is the best or not.
         """
         super().__init__()
 
@@ -44,7 +47,7 @@ class GDN(nn.Module):
         return out
 
 class AnalysisTransform(nn.Module):
-    def __init__(self, N=128, M=256):
+    def __init__(self, n=128, m=256):
         """
         Conv 5x5, N, stride 2
         GDN
@@ -55,13 +58,13 @@ class AnalysisTransform(nn.Module):
         Conv 5x5, M, stride 2
         """
         self.model = nn.Sequential(
-            nn.Conv2d(4, N, (5, 5), stride=2),
-            GDN(N),
-            nn.Conv2d(N, N, (5, 5), stride=2),
-            GDN(N),
-            nn.Conv2d(N, N, (5, 5), stride=2),
-            GDN(N),
-            nn.Conv2d(N, M, (5, 5), stride=2),
+            nn.Conv2d(4, n, (5, 5), stride=2),
+            GDN(n),
+            nn.Conv2d(n, n, (5, 5), stride=2),
+            GDN(n),
+            nn.Conv2d(n, n, (5, 5), stride=2),
+            GDN(n),
+            nn.Conv2d(n, m, (5, 5), stride=2),
         )
     
     def forward(self, x):
@@ -70,7 +73,7 @@ class AnalysisTransform(nn.Module):
         
 
 class SynthesisTransform(nn.Module):
-    def __init__(self, N=128, M=256):
+    def __init__(self, n=128, m=256):
         """
         Deconv 5x5, N, stride 2
         IGDN
@@ -81,13 +84,13 @@ class SynthesisTransform(nn.Module):
         Deconv 5x5, 3, stride 2
         """
         self.model = nn.Sequential(
-            nn.ConvTranspose2d(M, N, (5, 5), stride=2),
-            GDN(N, inverse=True),
-            nn.ConvTranspose2d(N, N, (5, 5), stride=2),
-            GDN(N, inverse=True),
-            nn.ConvTranspose2d(N, N, (5, 5), stride=2),
-            GDN(N, inverse=True),
-            nn.ConvTranspose2d(N, 4, (5, 5), stride=2),
+            nn.ConvTranspose2d(m, n, (5, 5), stride=2),
+            GDN(n, inverse=True),
+            nn.ConvTranspose2d(n, n, (5, 5), stride=2),
+            GDN(n, inverse=True),
+            nn.ConvTranspose2d(n, n, (5, 5), stride=2),
+            GDN(n, inverse=True),
+            nn.ConvTranspose2d(n, 4, (5, 5), stride=2),
         )
 
     def forward(self, x):
@@ -95,7 +98,7 @@ class SynthesisTransform(nn.Module):
         return out
 
 class HyperAnalysisTransform(nn.Module):
-    def __init__(self, N=128):
+    def __init__(self, n=128):
         """
         Conv 3x3, N, stride 1
         Leaky ReLU
@@ -104,11 +107,11 @@ class HyperAnalysisTransform(nn.Module):
         Conv 5x5, N, stride 1
         """
         self.model = nn.Sequential(
-            nn.Conv2d(N, N, (3, 3), stride=1),
+            nn.Conv2d(n, n, (3, 3), stride=1),
             nn.LeakyReLU(),
-            nn.Conv2d(N, N, (5, 5), stride=2),
+            nn.Conv2d(n, n, (5, 5), stride=2),
             nn.LeakyReLU(),
-            nn.Conv2d(N, N, (5, 5), stride=2),
+            nn.Conv2d(n, n, (5, 5), stride=2),
         )
 
     def forward(self, x):
@@ -116,15 +119,15 @@ class HyperAnalysisTransform(nn.Module):
         return out
 
 class HyperSynthesisTransform(nn.Module):
-    def __init__(self, N=128, M=256):
-        intermediate = int(1.5 * N)
+    def __init__(self, n=128, m=256):
+        intermediate = int(1.5 * n)
 
         self.model = nn.Sequential(
-            nn.Conv2d(N, N, (5, 5), stride=12),
+            nn.Conv2d(n, n, (5, 5), stride=12),
             nn.LeakyReLU(),
-            nn.Conv2d(N, intermediate, (5, 5), stride=2),
+            nn.Conv2d(n, intermediate, (5, 5), stride=2),
             nn.LeakyReLU(),
-            nn.Conv2d(intermediate, 2*M, (3, 3), stride=1),
+            nn.Conv2d(intermediate, 2*m, (3, 3), stride=1),
         )
     
     def forward(self, x):
@@ -132,14 +135,23 @@ class HyperSynthesisTransform(nn.Module):
         return out
 
 class Context(nn.Module):
-    def __init__(self):
+    def __init__(self, m=256):
         """
+        Context model used during parallel encoding pass and second decoding pass.
+
+        The hyperprior suffices to decode the y_anchor bitstream, which is then
+        passed to this model (alongside the hyperprior). The context model is a
+        simple convolution that will generate context features for the parameter
+        estimation model, to be used alongside the hyperprior, when estimating
+        parameters for the non-anchor y_latent to be decoded.
+
+        NOTE consider replacing this with self attention
         """
-        pass
+        self.conv = nn.Conv2d(m, 2*m, (5, 5), stride=1)
 
     def forward(self, x):
-        # rough outline of how this will work
-        pass
+        out = self.conv(x)
+        return out
 
 class ParameterEstimator(nn.Module):
     def __init__(self):
@@ -154,15 +166,7 @@ class ParameterEstimator(nn.Module):
         Conv 1x1, 2N, stride 1
         """
 
-class Entropy(nn.Module):
-    def __init__(self):
-        pass
-
-class HyperEntropy(nn.Module):
-    def __init__(self):
-        pass
-
-class SAIC(nn.Module):
+class HyperpriorCheckerboardCompression(nn.Module):
     def __init__(self):
         super().__init__()
 
@@ -173,15 +177,11 @@ class SAIC(nn.Module):
         self.context = Context()
         self.parameter_estimator = ParameterEstimator()
 
-        self.entropy = Entropy()
-        self.hyper_entropy = HyperEntropy()
-
         self.rans_coder = None
 
     def forward(self, x, mask):
         """
-        Forward pass to train model(s) to compress an image, conditioned by its
-        mask, into 2 integer sequences (y, z).
+        Forward pass to train model(s). Doesn't actually interact with the rANS coder.
 
         Args:
             x: torch.tensor
@@ -189,7 +189,7 @@ class SAIC(nn.Module):
             mask: torch.tensor
                 shape: (N, 1, H, W)
         """
-        # alternating 0 and 1 mask to decode
+        # alternating 0 and 1 mask to decode (starting with 0 in top left)
         anchor_mask = torch.zeros_like(x)
         anchor_mask[:,::2,::2] = 1
         anchor_mask[:,1::2,1::2] = 1
@@ -208,31 +208,11 @@ class SAIC(nn.Module):
         z_hat = z + torch.rand_like(z) - 0.5
 
         # Get parameters for PDF that entropy model will use, and to calculate rate loss
-        """
-        # context model takes in the quantized y_hat and the reconstructed z,
-
-        # pseudocode to better understand this
-        # on the first pass, we decode entropy parameters for anchor points (with 0 context)
-        # we can now decode half the elements in y_hat using these parameters
-        # on the second pass, we use the checkerboard model to generate a
-        # context feature for non-anchors from the decoded anchors. We
-        # concatenate this with our hyperprior and decode the remaining
-        # latent y_hat
-
-        def phi(z):
-            y_anchor = []
-            y_length = 1000
-            for i in range(y_length):
-                if y[i] in y_anchor:
-                    out = G_ep(H_s(z_hat), 0)
-                elif y[i] not in y_anchor:
-                    out = G_ep(H_s(z_hat), G_cm(y_anchor, M * W)) # masked convolution parametrized by mask M and weights W
-        """
-        hyper_features = self.HS(z_hat) # no side information used to synthesize z
+        hyperprior = self.HS(z_hat) # no side information used to synthesize z
         y_half = y_hat * anchor_mask
         context_features = self.context(y_half)
 
-        features = torch.cat(hyper_features, context_features)
+        features = torch.cat(hyperprior, context_features)
         mu, sigma = self.parameter_estimator(features)
 
         # Reconstruct
@@ -261,7 +241,7 @@ class SAIC(nn.Module):
         """
         pass
     
-    def decompress(self, y_bitstream, z_bitstream):
+    def decompress(self, y_anchor_bitstream, y_nonanchor_bitstream, z_bitstream):
         """
         Inference decompression.
         """
