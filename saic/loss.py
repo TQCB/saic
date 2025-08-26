@@ -1,9 +1,11 @@
 from typing import Sequence, Union
 
+import numpy as np
 import torch
 from torch import nn
 from torch import Tensor
 from torch.nn import functional as F
+from scipy.stats import norm
 
 def gaussian(kernel_size: int, sigma: float) -> Tensor:
     """
@@ -121,24 +123,50 @@ class PSNRLoss(nn.Module):
 class RateLoss(nn.Module):
     def __init__(self):
         """
-        Given a probability distribution and a true distribution, we evaluate
-        the (bit) rate of our distributions. 
+        Given a probability distribution and a sample, we evaluate
+        the (bit) rate of our distributions. Specifically, we find the log
+        probability of our sample under our distribution.
+
+        R = E_[x~p_x][-log_2 p_y (Q(g_a(x; P_g)))]
         """
         pass
+ 
 
-class RateDistortionLoss(nn.Module):
+
+class SpatialRateDistortionLoss(nn.Module):
     """
-    Module to combine rate and distortion losses with a gamma parameter.
+    Module to combine rate and spatially weighted distortion losses with a
+    lambda parameter.
     """
     def __init__(self,
-                 distortion_loss: nn.Module,
-                 lmbda: float,
+                 distortion_loss: nn.Module=SSIM(),
+                 lmbda: float=1e-2,
+                 foreground_weight: float=10,
                  ):
         super().__init__()
         self.lmbda = lmbda
         self.distortion_loss = distortion_loss
+        self.foreground_weight = foreground_weight
 
-    def forward(self, x, y, rate):
-        distortion = self.distortion_loss(x, y)
-        loss = distortion + self.lmbda * rate
+    def forward(self, output_dict, original_x, mask):
+        # distortion component
+        # 1 everywhere, except foreground where we use foreground_weight
+        pixel_wise_error = self.distortion_loss(output_dict['x_hat'], original_x)
+        weight_map = 1.0 + (self.foreground_weight - 1.0) * mask
+        weighted_error = weight_map * pixel_wise_error
+        D = torch.mean(weighted_error)
+        
+        # y rate component
+        mu, sigma = output_dict['y_params']
+        likelihood_y = torch.distributions.Normal(mu, sigma).log_prob(output_dict["y_hat"])
+        R_y = -torch.mean(likelihood_y)
+
+        # z rate component
+        z_logits = output_dict["z_params"]
+        z_hat_flat = output_dict["z_hat"].flatten().round().long()
+        z_hat_clamped = torch.clamp(z_hat_flat, 0, z_logits.numel() - 1)
+        log_probs_z = F.log_softmax(z_logits, dim=0)
+        R_z = F.nll_loss(log_probs_z.unsqueeze(0).expand(z_hat_clamped.size(0), -1), z_hat_clamped)
+
+        loss = self.lmbda * D + (R_y + R_z)
         return loss
