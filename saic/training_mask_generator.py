@@ -5,9 +5,24 @@ from pycocotools.coco import COCO
 from tqdm import tqdm
 from dotenv import load_dotenv
 
+# structure should be:
+# .../COCO_DATA_DIR/
+# ├── annotations/
+# │   ├── instances_train2017.json
+# │   └── instances_val2017.json
+# ├── train2017/
+# ├── masks_train2017/
+# ├── val2017/
+# └── masks_val2017/
+
 # config
+train = True
+if train:
+    data_type = 'train2017'
+else:
+    data_type = 'val_2017'
+
 data_dir = os.environ['COCO_DATA_DIR']
-data_type = 'train2017'
 ann_file = os.path.join(data_dir, 'annotations', f'instances_{data_type}.json')
 output_mask_dir = os.path.join(data_dir, f'masks_{data_type}')
 
