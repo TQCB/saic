@@ -4,13 +4,19 @@ from torchvision import transforms
 from PIL import Image
 import os
 
-def get_transforms(crop_size=(256, 256)):
-    """Define the set of transformations to be applied."""
-    # Note: Normalization is applied only to the image later
-    return transforms.Compose([
-        transforms.RandomCrop(crop_size),
-        transforms.RandomHorizontalFlip(),
-    ])
+def get_transforms(train=True, crop_size=(256, 256)):
+    """Define the set of transformations for training or validation."""
+    if train:
+        # For training, use random augmentations
+        return transforms.Compose([
+            transforms.RandomCrop(crop_size),
+            transforms.RandomHorizontalFlip(),
+        ])
+    else:
+        # For validation, use a deterministic center crop
+        return transforms.Compose([
+            transforms.CenterCrop(crop_size),
+        ])
 
 class COCOWithMasksDataset(Dataset):
     def __init__(self, image_dir, mask_dir, transform=None):
