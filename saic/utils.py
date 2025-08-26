@@ -1,19 +1,21 @@
-from typing import Union, Sequence
+from typing import Sequence
 
 import numpy as np
 from scipy.stats import norm
 
 def parameters_to_frequency(
         alphabet: np.ndarray,
-        mu: Union[float, Sequence[float]],
-        sigma: Union[float, Sequence[float]],
+        mu: np.ndarray,
+        sigma: np.ndarray,
         total_frequency: int=12
         ):
     """
     Given gaussian distribution parameters, return symbol frequencies over an
     alphabet.
     """
-    sigma = max(sigma, 1e-5) # avoid numerical issues from small sigma
+    # sigma = max(sigma, 1e-5) # avoid numerical issues from small sigma
+    sigma = np.clip(sigma, a_min=1e-5, a_max=None)
+
     total_frequency = 2 ** total_frequency
 
     upper_bounds = norm.cdf(alphabet + 0.5, loc=mu, scale=sigma)
