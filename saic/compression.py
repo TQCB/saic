@@ -6,10 +6,16 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-from loss import RateDistortionLoss
+from loss import SpatialRateDistortionLoss
 
 class GDN(nn.Module):
-    def __init__(self, channels, inverse=False, beta_min=1e-8, g_amma_init=0.1):
+    def __init__(
+            self,
+            channels,
+            inverse=False,
+            beta_min=1e-8,
+            gamma_init=0.1
+            ):
         """
         Simplified implementation of Generalized Divisive Normalization (GDN).
 
@@ -27,16 +33,16 @@ class GDN(nn.Module):
         self.beta_min = beta_min
 
         self.beta = nn.Parameter(torch.ones(channels))
-        self.g_amma = nn.Parameter(torch.diag(torch.ones(channels) * g_amma_init))
+        self.gamma = nn.Parameter(torch.diag(torch.ones(channels) * gamma_init))
 
     def forward(self, x):
         # input x is shape (b, c, h, w)
         beta_param = torch.square(self.beta) + self.beta_min
-        g_amma_param = torch.square(self.g_amma)
+        gamma_param = torch.square(self.gamma)
 
         # unsqueeze g_amma from (C, C) into (C, C, 1, 1)
         # 1x1 conv across input channels with g_amma as weight and beta as bias
-        norm = F.conv2d(x**2, weight=g_amma_param.unsqueeze(2).unsqueeze(3), padding=0)
+        norm = F.conv2d(x**2, weight=gamma_param.unsqueeze(2).unsqueeze(3), padding=0)
         norm = norm + beta_param.view(1, -1, 1, 1)
 
         if self.inverse:
@@ -83,6 +89,7 @@ class SynthesisTransform(nn.Module):
         IGDN
         Deconv 5x5, 3, stride 2
         """
+        super().__init__()
         self.model = nn.Sequential(
             nn.ConvTranspose2d(m, n, (5, 5), stride=2),
             GDN(n, inverse=True),
@@ -90,7 +97,7 @@ class SynthesisTransform(nn.Module):
             GDN(n, inverse=True),
             nn.ConvTranspose2d(n, n, (5, 5), stride=2),
             GDN(n, inverse=True),
-            nn.ConvTranspose2d(n, 4, (5, 5), stride=2),
+            nn.ConvTranspose2d(n, 3, (5, 5), stride=2), # assymetric synthesis into 3D image
         )
 
     def forward(self, x):
@@ -169,7 +176,7 @@ class ParameterEstimator(nn.Module):
             nn.LeakyReLU(inplace=True),
             nn.Conv2d(640, 512, kernel_size=1, stride=1),
             nn.LeakyReLU(inplace=True),
-            nn.Conv2d(512, 2 * self.n, kernel_size=1, stride=1),
+            nn.Conv2d(512, 2 * self.m, kernel_size=1, stride=1),
         )
     
     def forward(self, x):
@@ -181,20 +188,32 @@ class ParameterEstimator(nn.Module):
         return mu, sigma
 
 class HyperpriorCheckerboardCompressor(nn.Module):
-    def __init__(self):
+    def __init__(
+            self,
+            n: int,
+            m: int,
+            z_alphabet_size: int,
+            ):
         super().__init__()
 
-        self.g_a = AnalysisTransform()
-        self.g_s = SynthesisTransform()
-        self.h_a = HyperAnalysisTransform()
-        self.h_s = HyperSynthesisTransform()
-        self.g_cm = Context()
-        self.g_ep = ParameterEstimator()
+        self.g_a = AnalysisTransform(n=n, m=m)
+        self.g_s = SynthesisTransform(n=n, m=m)
+        self.h_a = HyperAnalysisTransform(n=n)
+        self.h_s = HyperSynthesisTransform(n=n, m=m)
+        self.g_cm = Context(m=m)
+        self.g_ep = ParameterEstimator(n=n, m=m)
 
         self.z_alphabet_size = z_alphabet_size
         self.z_logits = nn.Parameter(torch.rand(self.z_alphabet_size))
 
         self.rans_coder = None
+
+    def _create_mask(self, y):
+        # alternating 0 and 1 mask to decode (starting with 0 in top left)
+        anchor_mask = torch.zeros_like(y)
+        anchor_mask[:,::2,::2] = 1
+        anchor_mask[:,1::2,1::2] = 1
+        return anchor_mask
 
     def forward(self, x, mask):
         """
@@ -206,11 +225,6 @@ class HyperpriorCheckerboardCompressor(nn.Module):
             mask: torch.tensor
                 shape: (N, 1, H, W)
         """
-        # alternating 0 and 1 mask to decode (starting with 0 in top left)
-        anchor_mask = torch.zeros_like(x)
-        anchor_mask[:,::2,::2] = 1
-        anchor_mask[:,1::2,1::2] = 1
-
         # Concatenate mask into 4th image channel
         # I will later replace this with a dedicated mask encoder and
         # mask conditioned quantization module
@@ -219,6 +233,8 @@ class HyperpriorCheckerboardCompressor(nn.Module):
         # Forward through analysis transforms
         y = self.g_a(x)
         z = self.h_a(y)
+
+        anchor_mask = self._create_mask(y)
 
         # Quantization during training -> addition of uniform noise ~ N(-0.5, 0.5)
         y_hat = y + torch.rand_like(y) - 0.5
@@ -229,7 +245,7 @@ class HyperpriorCheckerboardCompressor(nn.Module):
         y_half = y_hat * anchor_mask
         context_features = self.g_cm(y_half)
 
-        features = torch.cat(hyperprior, context_features)
+        features = torch.cat([hyperprior, context_features], dim=1)
         mu, sigma = self.g_ep(features)
 
         # Reconstruct
