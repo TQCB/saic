@@ -5,6 +5,8 @@ from pycocotools.coco import COCO
 from tqdm import tqdm
 from dotenv import load_dotenv
 
+load_dotenv()
+
 # structure should be:
 # .../COCO_DATA_DIR/
 # ├── annotations/
@@ -16,17 +18,19 @@ from dotenv import load_dotenv
 # └── masks_val2017/
 
 # config
-train = True
+train = False
 if train:
     data_type = 'train2017'
 else:
-    data_type = 'val_2017'
+    data_type = 'val2017'
 
 data_dir = os.environ['COCO_DATA_DIR']
 ann_file = os.path.join(data_dir, 'annotations', f'instances_{data_type}.json')
 output_mask_dir = os.path.join(data_dir, f'masks_{data_type}')
 
-os.makedirs(output_mask_dir, exist_ok=True)
+# Will intentionally raise OSError if dir already exists to prevent overwriting
+os.makedirs(output_mask_dir, exist_ok=False)
+    
 
 def main():
     # coco init to get instance annotations
@@ -37,7 +41,7 @@ def main():
 
     print(f"Found {len(img_ids)} images. Starting mask generation.")
 
-    for img_id in tqdm(img_ids[:10]):
+    for img_id in tqdm(img_ids):
         # get image info
         img_info = coco.loadImgs(img_id)[0]
         img_height = img_info['height']
@@ -62,3 +66,6 @@ def main():
         mask_image.save(os.path.join(output_mask_dir, img_filename.replace('.jpg', '.png')))
 
     print("Mask generation complete!!")
+
+if __name__ == "__main__":
+    main()
