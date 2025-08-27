@@ -23,7 +23,7 @@ class DetectionResult:
     score: float
     label: str
     box: BoundingBox
-    mask: Optional[np.array] = None
+    mask: Optional[np.ndarray] = None
 
     @classmethod
     def from_dict(cls, detection_dict: Dict) -> 'DetectionResult':
