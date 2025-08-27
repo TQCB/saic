@@ -8,6 +8,8 @@ from loss import SpatialRateDistortionLoss
 from data import COCOWithMasksDataset, get_transforms
 from compression import HyperpriorCheckerboardCompressor
 
+load_dotenv()
+
 # model config
 MODEL_NAME = 'saic'
 N = 128
@@ -15,12 +17,13 @@ M = 192
 Z_ALPHABET_SIZE = 201
 
 # train config
+IM_SIZE = (384, 384)
 TRAIN_BATCH_SIZE = 8
 VAL_BATCH_SIZE = 64
 LR = 1e-3
 SCHEDULE_PATIENCE = 5
 GRAD_CLIP = True
-EPOCHS = 10
+EPOCHS = 1
 CHECKPOINT = False
 
 def main():
@@ -34,6 +37,8 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=SCHEDULE_PATIENCE)
 
+    print("Model initialized.")
+
     # TRAIN DATA
     train_image_dir = os.environ['TRAIN_COCO_IMAGE_DIR']
     train_mask_dir = os.environ['TRAIN_COCO_MASK_DIR']
@@ -41,7 +46,7 @@ def main():
     train_dataset = COCOWithMasksDataset(
         train_image_dir,
         train_mask_dir,
-        transform=get_transforms()
+        transform=get_transforms(crop_size=IM_SIZE)
     )
 
     loader = torch.utils.data.DataLoader(
@@ -59,7 +64,7 @@ def main():
     val_dataset = COCOWithMasksDataset(
         val_image_dir, 
         val_mask_dir, 
-        transform=get_transforms(train=False)
+        transform=get_transforms(crop_size=IM_SIZE, train=False)
     )
 
     val_loader = torch.utils.data.DataLoader(
@@ -69,6 +74,9 @@ def main():
         num_workers=4, 
         pin_memory=True
     )
+
+    print("Data initialized.")
+    print("Training loop beginning.")
 
     epochs = EPOCHS
     for epoch in range(epochs):
@@ -115,3 +123,6 @@ def main():
                     val_loss=avg_val_loss,
                     scheduler=scheduler
                 )
+
+if __name__ == '__main__':
+    main()
