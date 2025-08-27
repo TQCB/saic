@@ -9,12 +9,14 @@ def get_transforms(train=True, crop_size=(256, 256)):
     if train:
         # For training, use random augmentations
         return transforms.Compose([
+            transforms.Resize(crop_size),
             transforms.RandomCrop(crop_size),
             transforms.RandomHorizontalFlip(),
         ])
     else:
         # For validation, use a deterministic center crop
         return transforms.Compose([
+            transforms.Resize(crop_size),
             transforms.CenterCrop(crop_size),
         ])
 
