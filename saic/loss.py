@@ -61,6 +61,7 @@ class SSIM(nn.Module):
             c1 = (k1*L)^2
             c2 = (k2*L)^2
         """
+        super().__init__()
         if not isinstance(sigma, Sequence):
             sigma = (sigma, sigma)
 
@@ -115,7 +116,6 @@ class SSIM(nn.Module):
 
         return ssim_full_image
 
-
 class PSNRLoss(nn.Module):
     def __init__(self):
         raise NotImplementedError()
@@ -130,8 +130,6 @@ class RateLoss(nn.Module):
         R = E_[x~p_x][-log_2 p_y (Q(g_a(x; P_g)))]
         """
         pass
- 
-
 
 class SpatialRateDistortionLoss(nn.Module):
     """
