@@ -56,16 +56,18 @@ class AnalysisTransform(nn.Module):
         Conv 5x5, N, stride 2
         GDN
         Conv 5x5, M, stride 2
+
+        Padding=2 everywhere allows for output shape in this case to be 1/16th of input
         """
         super().__init__()
         self.model = nn.Sequential(
-            nn.Conv2d(4, n, (5, 5), stride=2),
+            nn.Conv2d(4, n, (5, 5), stride=2, padding=2),
             GDN(n),
-            nn.Conv2d(n, n, (5, 5), stride=2),
+            nn.Conv2d(n, n, (5, 5), stride=2, padding=2),
             GDN(n),
-            nn.Conv2d(n, n, (5, 5), stride=2),
+            nn.Conv2d(n, n, (5, 5), stride=2, padding=2),
             GDN(n),
-            nn.Conv2d(n, m, (5, 5), stride=2),
+            nn.Conv2d(n, m, (5, 5), stride=2, padding=2),
         )
     
     def forward(self, x):
@@ -110,11 +112,11 @@ class HyperAnalysisTransform(nn.Module):
         """
         super().__init__()
         self.model = nn.Sequential(
-            nn.Conv2d(m, n, (3, 3), stride=1),
+            nn.Conv2d(m, n, (3, 3), stride=1, padding=1),
             nn.LeakyReLU(),
-            nn.Conv2d(n, n, (5, 5), stride=2),
+            nn.Conv2d(n, n, (5, 5), stride=2, padding=2),
             nn.LeakyReLU(),
-            nn.Conv2d(n, n, (5, 5), stride=2),
+            nn.Conv2d(n, n, (5, 5), stride=2, padding=2),
         )
 
     def forward(self, x):
