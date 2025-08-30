@@ -88,13 +88,13 @@ class SynthesisTransform(nn.Module):
         """
         super().__init__()
         self.model = nn.Sequential(
-            nn.ConvTranspose2d(m, n, (5, 5), stride=2),
+            nn.ConvTranspose2d(m, n, (5, 5), stride=2, padding=2, output_padding=1),
             GDN(n, inverse=True),
-            nn.ConvTranspose2d(n, n, (5, 5), stride=2),
+            nn.ConvTranspose2d(n, n, (5, 5), stride=2, padding=2, output_padding=1),
             GDN(n, inverse=True),
-            nn.ConvTranspose2d(n, n, (5, 5), stride=2),
+            nn.ConvTranspose2d(n, n, (5, 5), stride=2, padding=2, output_padding=1),
             GDN(n, inverse=True),
-            nn.ConvTranspose2d(n, 3, (5, 5), stride=2), # assymetric synthesis into 3D image
+            nn.ConvTranspose2d(n, 3, (5, 5), stride=2, padding=2, output_padding=1), # assymetric synthesis into 3D image
         )
 
     def forward(self, x):
@@ -125,13 +125,16 @@ class HyperAnalysisTransform(nn.Module):
 
 class HyperSynthesisTransform(nn.Module):
     def __init__(self, n, m):
+        """
+        stride 2 in deconv introduces shape ambiguity that we resolve with output padding
+        """
         super().__init__()
         self.model = nn.Sequential(
-            nn.ConvTranspose2d(n, n, (5, 5), stride=2),
+            nn.ConvTranspose2d(n, n, (5, 5), stride=2, padding=2, output_padding=1),
             nn.LeakyReLU(),
-            nn.ConvTranspose2d(n, int(1.5 * n), (5, 5), stride=2),
+            nn.ConvTranspose2d(n, int(1.5 * n), (5, 5), stride=2, padding=2, output_padding=1),
             nn.LeakyReLU(),
-            nn.ConvTranspose2d(int(1.5 * n), 2*m, (3, 3), stride=1),
+            nn.ConvTranspose2d(int(1.5 * n), 2*m, (3, 3), stride=1, padding=1),
         )
     
     def forward(self, x):
@@ -152,7 +155,7 @@ class Context(nn.Module):
         NOTE consider replacing this with self attention
         """
         super().__init__()
-        self.conv = nn.Conv2d(m, 2*m, (5, 5), stride=1)
+        self.conv = nn.Conv2d(m, 2*m, (5, 5), stride=1, padding='same')
 
     def forward(self, x):
         out = self.conv(x)
