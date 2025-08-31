@@ -102,6 +102,15 @@ def main():
 
             if (i+1) % UPDATE_INTERVAL == 0:
                 print(f"Epoch [{epoch+1}/{epochs}] | Step [{i+1}/{len(train_loader)}] | Train Loss: {loss.item():.4f}")
+                plot_progress(
+                    checkpoint_dir,
+                    epoch,
+                    i,
+                    output_dict,
+                    image,
+                    criterion.R_y,
+                    criterion.R_z,
+                )
 
         # VALIDATION
         model.eval()
