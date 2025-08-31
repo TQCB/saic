@@ -89,7 +89,7 @@ class SSIM(nn.Module):
         c2 = pow(self.k2 * data_range, 2)
 
         conv_in = torch.cat((x, y, x*x, y*y, x*y)) # (5 * B, C, H, W)
-        conv_out = F.conv3d(conv_in, kernel, groups=channel)
+        conv_out = F.conv2d( conv_in, kernel, groups=channel, padding='same')
         output_list = conv_out.split(x.shape[0])
 
         # m -> mu -> mean
@@ -152,19 +152,21 @@ class SpatialRateDistortionLoss(nn.Module):
         pixel_wise_error = self.distortion_loss(output_dict['x_hat'], original_x)
         weight_map = 1.0 + (self.foreground_weight - 1.0) * mask
         weighted_error = weight_map * pixel_wise_error
-        D = torch.mean(weighted_error)
+        self.D = torch.mean(weighted_error)
         
         # y rate component
         mu, sigma = output_dict['y_params']
+        sigma = sigma.clamp(1e-6, 1e10)
         likelihood_y = torch.distributions.Normal(mu, sigma).log_prob(output_dict["y_hat"])
-        R_y = -torch.mean(likelihood_y)
+        self.R_y = -torch.mean(likelihood_y)
 
         # z rate component
         z_logits = output_dict["z_params"]
-        z_hat_flat = output_dict["z_hat"].flatten().round().long()
-        z_hat_clamped = torch.clamp(z_hat_flat, 0, z_logits.numel() - 1)
+        z_hat = output_dict["z_hat"].long()
+        z_hat_clamped = torch.clamp(z_hat, 0, z_logits.size(0) - 1)
         log_probs_z = F.log_softmax(z_logits, dim=0)
-        R_z = F.nll_loss(log_probs_z.unsqueeze(0).expand(z_hat_clamped.size(0), -1), z_hat_clamped)
+        symbol_log_probs = log_probs_z[z_hat_clamped]
+        self.R_z = -torch.mean(symbol_log_probs)
 
-        loss = self.lmbda * D + (R_y + R_z)
+        loss = self.lmbda * self.D + (self.R_y + self.R_z)
         return loss
