@@ -18,7 +18,7 @@ load_dotenv()
 # └── masks_val2017/
 
 # config
-train = False
+train = True
 if train:
     data_type = 'train2017'
 else:
@@ -51,7 +51,10 @@ def main():
         # get all annotation ids for this image
         ann_ids = coco.getAnnIds(imgIds=img_id, iscrowd=None)
         if not ann_ids:
-            continue
+            # if no annotations, then save blank mask
+            mask = np.zeros((img_height, img_width), dtype=np.uint8)
+            mask_image = Image.fromarray(mask * 255)
+            mask_image.save(os.path.join(output_mask_dir, img_filename.replace('.jpg', '.png')))
 
         anns = coco.loadAnns(ann_ids)
 
