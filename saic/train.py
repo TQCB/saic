@@ -3,6 +3,7 @@ import os
 import torch
 from dotenv import load_dotenv
 
+from utils import plot_progress
 from checkpoint import Checkpointer
 from loss import SpatialRateDistortionLoss
 from data import COCOWithMasksDataset, get_transforms
@@ -12,12 +13,12 @@ load_dotenv()
 
 # model config
 MODEL_NAME = 'saic'
-N = 128
-M = 192
+N = 32 # Default is 128
+M = 64 # Default is 192
 Z_ALPHABET_SIZE = 201
 
 # train config
-IM_SIZE = (384, 384)
+IM_SIZE = (64, 64)
 TRAIN_BATCH_SIZE = 8
 VAL_BATCH_SIZE = 64
 LR = 1e-3
@@ -25,6 +26,7 @@ SCHEDULE_PATIENCE = 5
 GRAD_CLIP = True
 EPOCHS = 1
 CHECKPOINT = False
+UPDATE_INTERVAL = 100
 
 def main():
     checkpoint_dir = os.environ['CHECKPOINT_DIR']
@@ -37,7 +39,9 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=SCHEDULE_PATIENCE)
 
-    print("Model initialized.")
+    total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+    print(f"Model initialized with {total_params:,} trainable parameters.")
 
     # TRAIN DATA
     train_image_dir = os.environ['TRAIN_COCO_IMAGE_DIR']
@@ -49,7 +53,7 @@ def main():
         transform=get_transforms(crop_size=IM_SIZE)
     )
 
-    loader = torch.utils.data.DataLoader(
+    train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=TRAIN_BATCH_SIZE,
         shuffle=True,
@@ -81,7 +85,7 @@ def main():
     epochs = EPOCHS
     for epoch in range(epochs):
         model.train()
-        for i, (image, mask) in enumerate(loader):
+        for i, (image, mask) in enumerate(train_loader):
             image = image.to(device)
             mask = mask.to(device)
 
@@ -96,8 +100,8 @@ def main():
 
             optimizer.step()
 
-            if (i+1) % 100 == 0:
-                print(f"Epoch [{epoch+1}/{epochs}], Step [{i+1}/{len(loader)}], Train Loss: {loss.item():.4f}")
+            if (i+1) % UPDATE_INTERVAL == 0:
+                print(f"Epoch [{epoch+1}/{epochs}] | Step [{i+1}/{len(train_loader)}] | Train Loss: {loss.item():.4f}")
 
         # VALIDATION
         model.eval()
@@ -112,7 +116,7 @@ def main():
                 total_val_loss += loss.item()
                 
             avg_val_loss = total_val_loss / len(val_loader)
-            print(f"Epoch {epoch+1}, Validation Loss: {avg_val_loss:.4f}")
+            print(f"Epoch [{epoch+1}] | Validation Loss: {avg_val_loss:.4f}")
             scheduler.step(avg_val_loss)
 
             if CHECKPOINT:
