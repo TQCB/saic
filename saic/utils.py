@@ -48,17 +48,17 @@ def parameters_to_frequency(
 
     return frequencies
 
-def plot_progress(output_dict, image, y_rate, z_rate):
+def plot_progress(path, epoch, steps, output_dict, image, y_rate, z_rate):
     """
     Plot original image, reconstructed image, and bit rates
     """
     image = image[0].detach()
     image = image.permute(1, 2, 0)
+    image = image * 255
+
     reconstructed = output_dict['x_hat'][0].detach()
     reconstructed = reconstructed.permute(1, 2, 0)
-
-    print(image.shape)
-    print(reconstructed.shape)
+    reconstructed = reconstructed * 255
 
     total_rate = y_rate + z_rate
     bitrate = total_rate / image.numel()
@@ -67,5 +67,5 @@ def plot_progress(output_dict, image, y_rate, z_rate):
     fig.add_trace(go.Image(z=image), row=1, col=1)
     fig.add_trace(go.Image(z=reconstructed), row=1, col=2)
 
-    fig.update_layout(title=dict(text=f"y_rate: {y_rate}\nz_rate: {z_rate}\ntotal_rate: {total_rate}\nbitrate: {bitrate}"))
-    fig.show()
+    fig.update_layout(title=dict(text=f"R_y: {y_rate:.1f} R_z: {z_rate:.1f} R: {total_rate:.1f} bitrate: {bitrate:.6f}"))
+    fig.write_image(path + f"/progress_{epoch}_{steps}.jpg")
