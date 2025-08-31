@@ -2,6 +2,8 @@ from typing import Sequence
 
 import numpy as np
 from scipy.stats import norm
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
 
 def parameters_to_frequency(
         alphabet: np.ndarray,
@@ -45,3 +47,25 @@ def parameters_to_frequency(
         frequencies[np.argmax(probs)] += error
 
     return frequencies
+
+def plot_progress(output_dict, image, y_rate, z_rate):
+    """
+    Plot original image, reconstructed image, and bit rates
+    """
+    image = image[0].detach()
+    image = image.permute(1, 2, 0)
+    reconstructed = output_dict['x_hat'][0].detach()
+    reconstructed = reconstructed.permute(1, 2, 0)
+
+    print(image.shape)
+    print(reconstructed.shape)
+
+    total_rate = y_rate + z_rate
+    bitrate = total_rate / image.numel()
+
+    fig = make_subplots(rows=1, cols=2)
+    fig.add_trace(go.Image(z=image), row=1, col=1)
+    fig.add_trace(go.Image(z=reconstructed), row=1, col=2)
+
+    fig.update_layout(title=dict(text=f"y_rate: {y_rate}\nz_rate: {z_rate}\ntotal_rate: {total_rate}\nbitrate: {bitrate}"))
+    fig.show()
