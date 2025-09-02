@@ -1,5 +1,7 @@
 from typing import Sequence
 
+import torch
+from torchvision import transforms
 import numpy as np
 from scipy.stats import norm
 from plotly.subplots import make_subplots
@@ -48,24 +50,44 @@ def parameters_to_frequency(
 
     return frequencies
 
-def plot_progress(path, epoch, steps, output_dict, image, y_rate, z_rate):
+def denormalize_image(image: torch.Tensor) -> torch.Tensor:
+    """
+    Original normalization is:
+    `transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])`
+
+    So the inverse is:
+    (image * std) + mean
+
+    transforms.Normalize(mean=[-0.485/0.229, -0.456/0.224, -0.406/0.225], std=[1/0.229, 1/0.224, 1/0.225])
+    """
+    inv_norm = transforms.Normalize(mean=[-0.485/0.229, -0.456/0.224, -0.406/0.225], std=[1/0.229, 1/0.224, 1/0.225])
+    inv_image = inv_norm(image)
+
+    return torch.clamp(inv_image, 0, 1)
+
+def convert_tensor_to_image(tensor):
+    """
+    Converts a PyTorch tensor into a displayable NumPy image array.
+    Assumes the input tensor is in the range [0, 1].
+    """
+    image = tensor.cpu().detach()
+    image = denormalize_image(image)
+    image = image.permute(1, 2, 0)
+    image = torch.clamp(image, 0, 1)
+    image = (image * 255).to(torch.uint8)
+
+    return image.numpy()
+
+def plot_progress(path, epoch, steps, output_dict, image, bitrate):
     """
     Plot original image, reconstructed image, and bit rates
     """
-    image = image[0].detach()
-    image = image.permute(1, 2, 0)
-    image = image * 255
-
-    reconstructed = output_dict['x_hat'][0].detach()
-    reconstructed = reconstructed.permute(1, 2, 0)
-    reconstructed = reconstructed * 255
-
-    total_rate = y_rate + z_rate
-    bitrate = total_rate / image.numel()
+    original_img = convert_tensor_to_image(image[0])
+    reconstructed_img = convert_tensor_to_image(output_dict['x_hat'][0])
 
     fig = make_subplots(rows=1, cols=2)
-    fig.add_trace(go.Image(z=image), row=1, col=1)
-    fig.add_trace(go.Image(z=reconstructed), row=1, col=2)
+    fig.add_trace(go.Image(z=original_img), row=1, col=1)
+    fig.add_trace(go.Image(z=reconstructed_img), row=1, col=2)
 
-    fig.update_layout(title=dict(text=f"R_y: {y_rate:.1f} R_z: {z_rate:.1f} R: {total_rate:.1f} bitrate: {bitrate:.6f}"))
+    fig.update_layout(title=dict(text=f"Epoch: {epoch}, Steps:{steps}<br>BPP: {bitrate:.6f}"))
     fig.write_image(path + f"/progress_{epoch}_{steps}.jpg")
