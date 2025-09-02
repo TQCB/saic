@@ -147,6 +147,9 @@ class SpatialRateDistortionLoss(nn.Module):
         self.foreground_weight = foreground_weight
 
     def forward(self, output_dict, original_x, mask):
+        # get num pixels for final bitrate
+        num_pixels = original_x.numel()
+
         # distortion component
         # 1 everywhere, except foreground where we use foreground_weight
         pixel_wise_error = self.distortion_loss(output_dict['x_hat'], original_x)
@@ -157,16 +160,27 @@ class SpatialRateDistortionLoss(nn.Module):
         # y rate component
         mu, sigma = output_dict['y_params']
         sigma = sigma.clamp(1e-6, 1e10)
-        likelihood_y = torch.distributions.Normal(mu, sigma).log_prob(output_dict["y_hat"])
-        self.R_y = -torch.mean(likelihood_y)
+        # likelihood_y = torch.distributions.Normal(mu, sigma).log_prob(output_dict["y_hat"])
+        # self.R_y = -torch.mean(likelihood_y)
+        # self.total_R_y = -torch.sum(likelihood_y)
+
+        # use binned CDF probability
+        gaussian = torch.distributions.Normal(mu, sigma)
+        upper = gaussian.cdf(output_dict['y_hat'] + 0.5)
+        lower = gaussian.cdf(output_dict['y_hat'] - 0.5)
+        likelihood_y = (upper - lower).clamp(1e-6, 1.0)
 
         # z rate component
         z_logits = output_dict["z_params"]
         z_hat = output_dict["z_hat"].long()
-        z_hat_clamped = torch.clamp(z_hat, 0, z_logits.size(0) - 1)
+        # z_hat_clamped = torch.clamp(z_hat, 0, z_logits.size(0) - 1)
         log_probs_z = F.log_softmax(z_logits, dim=0)
-        symbol_log_probs = log_probs_z[z_hat_clamped]
-        self.R_z = -torch.mean(symbol_log_probs)
+        likelihood_z = log_probs_z[z_hat]
 
-        loss = self.lmbda * self.D + (self.R_y + self.R_z)
+        self.total_R_y = -torch.sum(likelihood_y)
+        self.total_R_z = -torch.sum(likelihood_z)
+
+        self.R_bpp = (self.total_R_y + self.total_R_z) / num_pixels
+
+        loss = self.lmbda * self.D + self.R_bpp
         return loss
