@@ -18,12 +18,7 @@ load_dotenv()
 # └── masks_val2017/
 
 # config
-train = True
-if train:
-    data_type = 'train2017'
-else:
-    data_type = 'val2017'
-
+data_type = os.environ['DATA_TYPE']
 data_dir = os.environ['COCO_DATA_DIR']
 ann_file = os.path.join(data_dir, 'annotations', f'instances_{data_type}.json')
 output_mask_dir = os.path.join(data_dir, f'masks_{data_type}')
