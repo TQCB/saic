@@ -108,8 +108,7 @@ def main():
                     i,
                     output_dict,
                     image,
-                    criterion.R_y,
-                    criterion.R_z,
+                    criterion.R_bpp,
                 )
 
         # VALIDATION
