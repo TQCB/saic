@@ -1,3 +1,4 @@
+import math
 from typing import Sequence, Union
 
 import numpy as np
@@ -148,7 +149,7 @@ class SpatialRateDistortionLoss(nn.Module):
 
     def forward(self, output_dict, original_x, mask):
         # get num pixels for final bitrate
-        num_pixels = original_x.numel()
+        num_pixels = original_x.size(0) * original_x.size(2) * original_x.size(3)
 
         # distortion component
         # 1 everywhere, except foreground where we use foreground_weight
@@ -177,8 +178,8 @@ class SpatialRateDistortionLoss(nn.Module):
         log_probs_z = F.log_softmax(z_logits, dim=0)
         likelihood_z = log_probs_z[z_hat]
 
-        self.total_R_y = -torch.sum(likelihood_y)
-        self.total_R_z = -torch.sum(likelihood_z)
+        self.total_R_y = -torch.sum(torch.log2(likelihood_y))
+        self.total_R_z = -torch.sum(likelihood_z) / math.log(2)
 
         self.R_bpp = (self.total_R_y + self.total_R_z) / num_pixels
 
