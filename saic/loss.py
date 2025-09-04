@@ -85,6 +85,7 @@ class SSIM(nn.Module):
 
         channel = x.size(1)
         kernel = gaussian_kernel_2d(channel, self.kernel_size, self.sigma)
+        kernel = kernel.to(device=x.device, dtype=x.dtype)
 
         c1 = pow(self.k1 * data_range, 2)
         c2 = pow(self.k2 * data_range, 2)
