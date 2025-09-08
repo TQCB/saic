@@ -6,3 +6,6 @@ ressources.md
 .env
 saic/test_loss.py
 TODO.md
+
+colab_train.ipynb
+colab_train_lite.ipynb
