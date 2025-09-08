@@ -4,6 +4,7 @@ import torch
 from dotenv import load_dotenv
 
 from utils import plot_progress
+from config import TrainingConfig
 from checkpoint import Checkpointer
 from loss import SpatialRateDistortionLoss
 from data import COCOWithMasksDataset, get_transforms
@@ -28,9 +29,9 @@ EPOCHS = 1
 CHECKPOINT = False
 UPDATE_INTERVAL = 100
 
-def main():
+def train(config: TrainingConfig):
     checkpoint_dir = os.environ['CHECKPOINT_DIR']
-    checkpointer = Checkpointer(checkpoint_dir, MODEL_NAME)
+    checkpointer = Checkpointer(checkpoint_dir, config.model_name)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = HyperpriorCheckerboardCompressor(n=N, m=M, z_alphabet_size=Z_ALPHABET_SIZE).to(device)
@@ -137,4 +138,11 @@ def main():
                 )
 
 if __name__ == '__main__':
-    main()
+    settings = {}
+
+    try:
+        validated_config = TrainingConfig(**settings)
+        train(validated_config)
+        
+    except Exception as e:
+        print(f"Configuration error: {e}")
