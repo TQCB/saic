@@ -94,6 +94,9 @@ def train(config: TrainingConfig):
                 )
 
         # VALIDATION
+        if not config.validation:
+            continue
+
         model.eval()
         with torch.no_grad():
             total_val_loss = 0

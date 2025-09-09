@@ -23,6 +23,7 @@ class TrainingConfig(BaseModel):
     epochs: int = Field(1, gt=0, description="Number of training epochs, must be positive.")
     checkpoint: bool = False
     update_interval: int = Field(100, gt=0, description="Update interval, must be positive.")
+    validation: bool = True
 
     # Custom Validator for im_size
     @validator('im_size')
