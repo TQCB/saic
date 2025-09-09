@@ -41,7 +41,6 @@ def train(config: TrainingConfig):
         train_dataset,
         batch_size=config.train_batch_size,
         shuffle=True,
-        num_workers=4,
         pin_memory=True
     )
     
@@ -59,7 +58,6 @@ def train(config: TrainingConfig):
         val_dataset, 
         batch_size=config.val_batch_size,
         shuffle=False,
-        num_workers=4, 
         pin_memory=True
     )
 
