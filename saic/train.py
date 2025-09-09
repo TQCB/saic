@@ -25,7 +25,7 @@ def train(config: TrainingConfig):
 
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-    print(f"Model initialized with {total_params:,} trainable parameters.")
+    print(f"Model initialized with {total_params:,} trainable parameters on {device} device")
 
     # TRAIN DATA
     train_image_dir = os.environ['TRAIN_COCO_IMAGE_DIR']
