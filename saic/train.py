@@ -102,7 +102,7 @@ def train(config: TrainingConfig):
                 val_mask = val_mask.to(device)
 
                 output_dict = model(val_image, val_mask)
-                loss = criterion(output_dict, image, mask)
+                loss = criterion(output_dict, val_image, val_mask)
                 total_val_loss += loss.item()
                 
             avg_val_loss = total_val_loss / len(val_loader)
