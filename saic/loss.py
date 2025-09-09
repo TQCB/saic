@@ -87,11 +87,8 @@ class SSIM(nn.Module):
         kernel = gaussian_kernel_2d(channel, self.kernel_size, self.sigma)
         kernel = kernel.to(device=x.device, dtype=x.dtype)
 
-        c1 = pow(self.k1 * data_range, 2)
-        c2 = pow(self.k2 * data_range, 2)
-
         conv_in = torch.cat((x, y, x*x, y*y, x*y)) # (5 * B, C, H, W)
-        conv_out = F.conv2d( conv_in, kernel, groups=channel, padding='same')
+        conv_out = F.conv2d(conv_in, kernel, groups=channel, padding='same')
         output_list = conv_out.split(x.shape[0])
 
         # m -> mu -> mean
