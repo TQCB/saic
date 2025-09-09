@@ -9,3 +9,5 @@ TODO.md
 
 colab_train.ipynb
 colab_train_lite.ipynb
+
+conda_env_spec_file.yml
