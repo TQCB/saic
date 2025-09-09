@@ -4,10 +4,12 @@ __pycache__
 research.md
 ressources.md
 .env
+.home_env
 saic/test_loss.py
 TODO.md
 
 colab_train.ipynb
 colab_train_lite.ipynb
+saic/train_local.ipynb
 
 conda_env_spec_file.yml
