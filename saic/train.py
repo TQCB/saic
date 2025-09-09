@@ -12,33 +12,16 @@ from compression import HyperpriorCheckerboardCompressor
 
 load_dotenv()
 
-# model config
-MODEL_NAME = 'saic'
-N = 32 # Default is 128
-M = 64 # Default is 192
-Z_ALPHABET_SIZE = 201
-
-# train config
-IM_SIZE = (64, 64)
-TRAIN_BATCH_SIZE = 8
-VAL_BATCH_SIZE = 64
-LR = 1e-3
-SCHEDULE_PATIENCE = 5
-GRAD_CLIP = True
-EPOCHS = 1
-CHECKPOINT = False
-UPDATE_INTERVAL = 100
-
 def train(config: TrainingConfig):
     checkpoint_dir = os.environ['CHECKPOINT_DIR']
     checkpointer = Checkpointer(checkpoint_dir, config.model_name)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = HyperpriorCheckerboardCompressor(n=N, m=M, z_alphabet_size=Z_ALPHABET_SIZE).to(device)
+    model = HyperpriorCheckerboardCompressor(n=config.n, m=config.m, z_alphabet_size=config.z_alphabet_size).to(device)
 
-    criterion = SpatialRateDistortionLoss(lmbda=0.01, foreground_weight=10.0)
-    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=SCHEDULE_PATIENCE)
+    criterion = SpatialRateDistortionLoss(lmbda=config.loss_lmbda, foreground_weight=config.loss_fg_weight)
+    optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=config.schedule_patience)
 
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
@@ -51,12 +34,12 @@ def train(config: TrainingConfig):
     train_dataset = COCOWithMasksDataset(
         train_image_dir,
         train_mask_dir,
-        transform=get_transforms(crop_size=IM_SIZE)
+        transform=get_transforms(crop_size=config.im_size)
     )
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
-        batch_size=TRAIN_BATCH_SIZE,
+        batch_size=config.train_batch_size,
         shuffle=True,
         num_workers=4,
         pin_memory=True
@@ -69,12 +52,12 @@ def train(config: TrainingConfig):
     val_dataset = COCOWithMasksDataset(
         val_image_dir, 
         val_mask_dir, 
-        transform=get_transforms(crop_size=IM_SIZE, train=False)
+        transform=get_transforms(crop_size=config.im_size, train=False)
     )
 
     val_loader = torch.utils.data.DataLoader(
         val_dataset, 
-        batch_size=VAL_BATCH_SIZE,
+        batch_size=config.val_batch_size,
         shuffle=False,
         num_workers=4, 
         pin_memory=True
@@ -83,7 +66,7 @@ def train(config: TrainingConfig):
     print("Data initialized.")
     print("Training loop beginning.")
 
-    epochs = EPOCHS
+    epochs = config.epochs
     for epoch in range(epochs):
         model.train()
         for i, (image, mask) in enumerate(train_loader):
@@ -96,12 +79,12 @@ def train(config: TrainingConfig):
             optimizer.zero_grad()
             loss.backward()
 
-            if GRAD_CLIP:
+            if config.grad_clip:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
             optimizer.step()
 
-            if (i+1) % UPDATE_INTERVAL == 0:
+            if (i+1) % config.update_interval == 0:
                 print(f"Epoch [{epoch+1}/{epochs}] | Step [{i+1}/{len(train_loader)}] | Train Loss: {loss.item():.4f}")
                 plot_progress(
                     checkpoint_dir,
@@ -128,7 +111,7 @@ def train(config: TrainingConfig):
             print(f"Epoch [{epoch+1}] | Validation Loss: {avg_val_loss:.4f}")
             scheduler.step(avg_val_loss)
 
-            if CHECKPOINT:
+            if config.checkpoint:
                 checkpointer.save(
                     epoch=epoch,
                     model=model,
