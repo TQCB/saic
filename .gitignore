@@ -10,6 +10,6 @@ TODO.md
 
 colab_train.ipynb
 colab_train_lite.ipynb
-saic/train_local.ipynb
+saic/train_local.py
 
 conda_env_spec_file.yml
