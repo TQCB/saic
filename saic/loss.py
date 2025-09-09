@@ -115,53 +115,66 @@ class SSIM(nn.Module):
 
         return ssim_full_image
 
-class PSNRLoss(nn.Module):
-    def __init__(self):
-        raise NotImplementedError()
-
-class RateLoss(nn.Module):
-    def __init__(self):
-        """
-        Given a probability distribution and a sample, we evaluate
-        the (bit) rate of our distributions. Specifically, we find the log
-        probability of our sample under our distribution.
-
-        R = E_[x~p_x][-log_2 p_y (Q(g_a(x; P_g)))]
-        """
-        pass
-
 class SpatialRateDistortionLoss(nn.Module):
     """
     Module to combine rate and spatially weighted distortion losses with a
     lambda parameter.
     """
     def __init__(self,
-                 distortion_loss: nn.Module=SSIM(),
                  lmbda: float=1e-2,
                  foreground_weight: float=10,
+                 distortion_metric: str='mixed',
+                 alpha: float=0.85,
                  ):
         super().__init__()
+        if distortion_metric not in ["ssim", "mse", "mixed"]:
+            raise ValueError(f"Distortion metric must be one of 'ssim', 'mse', or 'mixed', but got {distortion_metric}")
+        
         self.lmbda = lmbda
-        self.distortion_loss = distortion_loss
         self.foreground_weight = foreground_weight
+        self.distortion_metric = distortion_metric
+        self.alpha = alpha
+        
+        self.ssim_loss = SSIM()
+        self.mse_loss = nn.MSELoss(reduction='none')
 
     def forward(self, output_dict, original_x, mask):
         # get num pixels for final bitrate
         num_pixels = original_x.size(0) * original_x.size(2) * original_x.size(3)
+        x_hat = output_dict['x_hat']
 
         # distortion component
-        # 1 everywhere, except foreground where we use foreground_weight
-        pixel_wise_error = self.distortion_loss(output_dict['x_hat'], original_x)
         weight_map = 1.0 + (self.foreground_weight - 1.0) * mask
-        weighted_error = weight_map * pixel_wise_error
-        self.D = torch.mean(weighted_error)
+        
+        # Calculate distortion D based on the chosen metric
+        if self.distortion_metric == "ssim":
+            ssim_map = self.ssim_loss(x_hat, original_x)
+            # Convert similarity to distortion (1 - SSIM) for minimization
+            dssim_map = 1.0 - ssim_map
+            weighted_distortion = weight_map * dssim_map
+            self.D = torch.mean(weighted_distortion)
+        
+        elif self.distortion_metric == "mse":
+            mse_map = self.mse_loss(x_hat, original_x)
+            weighted_distortion = weight_map * mse_map
+            self.D = torch.mean(weighted_distortion)
+
+        elif self.distortion_metric == "mixed":
+            # Calculate 1 - SSIM component
+            ssim_map = self.ssim_loss(x_hat, original_x)
+            dssim_map = 1.0 - ssim_map
+            weighted_dssim = torch.mean(weight_map * dssim_map)
+            
+            # Calculate MSE component
+            mse_map = self.mse_loss(x_hat, original_x)
+            weighted_mse = torch.mean(weight_map * mse_map)
+            
+            # Combine them using alpha
+            self.D = self.alpha * weighted_mse + (1.0 - self.alpha) * weighted_dssim
         
         # y rate component
         mu, sigma = output_dict['y_params']
         sigma = sigma.clamp(1e-6, 1e10)
-        # likelihood_y = torch.distributions.Normal(mu, sigma).log_prob(output_dict["y_hat"])
-        # self.R_y = -torch.mean(likelihood_y)
-        # self.total_R_y = -torch.sum(likelihood_y)
 
         # use binned CDF probability
         gaussian = torch.distributions.Normal(mu, sigma)
