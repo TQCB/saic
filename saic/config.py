@@ -16,6 +16,8 @@ class TrainingConfig(BaseModel):
     train_batch_size: int = Field(8, gt=0, description="Training batch size, must be positive.")
     val_batch_size: int = Field(64, gt=0, description="Validation batch size, must be positive.")
     lr: float = Field(1e-3, gt=0, description="Learning rate, must be a positive float.")
+    loss_lmbda: float = Field(0.01, gt=0, description='Lambda coefficient used in the loss as a weight for the distortion component')
+    loss_fg_weight: float = Field(10, gt=0, description='Foreground coeffficient used in the loss as a weight for the importance of the foreground component.')
     schedule_patience: int = Field(5, ge=0, description="Scheduler patience, must be >= 0.")
     grad_clip: bool = True
     epochs: int = Field(1, gt=0, description="Number of training epochs, must be positive.")
