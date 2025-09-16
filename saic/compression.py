@@ -204,6 +204,3 @@ class HyperpriorCheckerboardCompressor(nn.Module):
         x_hat = self.g_s(y_hat)
 
         return x_hat
-
-def func(x):
-    return x ** 2
