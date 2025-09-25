@@ -122,11 +122,25 @@ def train(config: TrainingConfig):
                 )
 
 if __name__ == '__main__':
-    settings = {}
+    print("Configuring model...")
+    experiment_settings = dict(
+        model_name = 'local_saic',
+        im_size = (64, 64),
+        lr = 1e-3,
+        scheduler_patience = 1,
+        epochs = 20,
+        train_batch_size = 32,
+        checkpoint = False,
+        n = int(16),
+        m = int(16),
+        validation = False,
+        update_interval = 20,
+    )
 
     try:
-        validated_config = TrainingConfig(**settings)
-        train(validated_config)
-        
+        config = TrainingConfig(**experiment_settings)
+        print("Model configured.")
     except Exception as e:
         print(f"Configuration error: {e}")
+
+    train(config)
