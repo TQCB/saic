@@ -24,6 +24,7 @@ class TrainingConfig(BaseModel):
     checkpoint: bool = False
     update_interval: int = Field(100, gt=0, description="Update interval, must be positive.")
     validation: bool = True
+    compile: bool = False
 
     # Custom Validator for im_size
     @validator('im_size')
