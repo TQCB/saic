@@ -1,7 +1,7 @@
 import os
 
 import torch
-from dotenv import load_dotenv
+from tqdm import tqdm
 
 from utils import plot_progress
 from config import TrainingConfig
@@ -10,14 +10,19 @@ from loss import SpatialRateDistortionLoss
 from data import COCOWithMasksDataset, get_transforms
 from compression import HyperpriorCheckerboardCompressor
 
-load_dotenv()
+
 
 def train(config: TrainingConfig):
+    if config.checkpoint & (not config.validation):
+        raise Exception("Checkpointing cannot be enabled without validation.")
+
     checkpoint_dir = os.environ['CHECKPOINT_DIR']
     checkpointer = Checkpointer(checkpoint_dir, config.model_name)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = HyperpriorCheckerboardCompressor(n=config.n, m=config.m, z_alphabet_size=config.z_alphabet_size).to(device)
+    model = HyperpriorCheckerboardCompressor(n=config.n, m=config.m, z_alphabet_size=config.z_alphabet_size)
+    model = model.to(device, memory_format=torch.channels_last)
+    # model = torch.compile(model)
 
     criterion = SpatialRateDistortionLoss(lmbda=config.loss_lmbda, foreground_weight=config.loss_fg_weight)
     optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
@@ -41,7 +46,8 @@ def train(config: TrainingConfig):
         train_dataset,
         batch_size=config.train_batch_size,
         shuffle=True,
-        pin_memory=True
+        pin_memory=True,
+        num_workers=os.cpu_count(),
     )
     
     # VAL DATA
@@ -58,29 +64,36 @@ def train(config: TrainingConfig):
         val_dataset, 
         batch_size=config.val_batch_size,
         shuffle=False,
-        pin_memory=True
+        pin_memory=True,
+        num_workers=os.cpu_count(),
     )
+
+    # gradient scaler for mixed precision
+    scaler = torch.amp.GradScaler(device.type)
 
     print("Data initialized.")
     print("Training loop beginning.")
 
     epochs = config.epochs
-    for epoch in range(epochs):
+    for epoch in tqdm(range(epochs), desc='Epochs'):
         model.train()
         for i, (image, mask) in enumerate(train_loader):
-            image = image.to(device)
-            mask = mask.to(device)
+            image = image.to(device, memory_format=torch.channels_last)
+            mask = mask.to(device, memory_format=torch.channels_last)
+            optimizer.zero_grad(set_to_none=True)
 
-            output_dict = model(image, mask)
-            loss = criterion(output_dict, image, mask)
+            with torch.amp.autocast(device.type):
+                output_dict = model(image, mask)
+                loss = criterion(output_dict, image, mask)
 
-            optimizer.zero_grad()
-            loss.backward()
+            scaler.scale(loss).backward()
 
             if config.grad_clip:
+                scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
-            optimizer.step()
+            scaler.step(optimizer)
+            scaler.update()
 
             if (i+1) % config.update_interval == 0:
                 print(f"Epoch [{epoch+1}/{epochs}] | Step [{i+1}/{len(train_loader)}] | Train Loss: {loss.item():.4f}")
@@ -122,6 +135,9 @@ def train(config: TrainingConfig):
                 )
 
 if __name__ == '__main__':
+    from dotenv import load_dotenv
+    load_dotenv()
+
     print("Configuring model...")
     experiment_settings = dict(
         model_name = 'local_saic',
@@ -134,7 +150,7 @@ if __name__ == '__main__':
         n = int(16),
         m = int(16),
         validation = False,
-        update_interval = 20,
+        update_interval = 100,
     )
 
     try:
