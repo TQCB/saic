@@ -10,8 +10,6 @@ from loss import SpatialRateDistortionLoss
 from data import COCOWithMasksDataset, get_transforms
 from compression import HyperpriorCheckerboardCompressor
 
-
-
 def train(config: TrainingConfig):
     if config.checkpoint & (not config.validation):
         raise Exception("Checkpointing cannot be enabled without validation.")
@@ -22,14 +20,15 @@ def train(config: TrainingConfig):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = HyperpriorCheckerboardCompressor(n=config.n, m=config.m, z_alphabet_size=config.z_alphabet_size)
     model = model.to(device, memory_format=torch.channels_last)
-    # model = torch.compile(model)
+
+    if config.compile:
+        model = torch.compile(model)
 
     criterion = SpatialRateDistortionLoss(lmbda=config.loss_lmbda, foreground_weight=config.loss_fg_weight)
     optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=config.schedule_patience)
 
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-
     print(f"Model initialized with {total_params:,} trainable parameters on {device} device")
 
     # TRAIN DATA
@@ -75,9 +74,9 @@ def train(config: TrainingConfig):
     print("Training loop beginning.")
 
     epochs = config.epochs
-    for epoch in tqdm(range(epochs), desc='Epochs'):
+    for epoch in tqdm(range(epochs), desc='Epochs', total=epochs):
         model.train()
-        for i, (image, mask) in enumerate(train_loader):
+        for i, (image, mask) in tqdm(enumerate(train_loader), desc='Steps', total=len(train_loader), position=1):
             image = image.to(device, memory_format=torch.channels_last)
             mask = mask.to(device, memory_format=torch.channels_last)
             optimizer.zero_grad(set_to_none=True)
@@ -96,7 +95,7 @@ def train(config: TrainingConfig):
             scaler.update()
 
             if (i+1) % config.update_interval == 0:
-                print(f"Epoch [{epoch+1}/{epochs}] | Step [{i+1}/{len(train_loader)}] | Train Loss: {loss.item():.4f}")
+                tqdm.write(f"Epoch [{epoch+1}/{epochs}] | Step [{i+1}/{len(train_loader)}] | Train Loss: {loss.item():.4f}")
                 plot_progress(
                     checkpoint_dir,
                     epoch,
@@ -122,7 +121,7 @@ def train(config: TrainingConfig):
                 total_val_loss += loss.item()
                 
             avg_val_loss = total_val_loss / len(val_loader)
-            print(f"Epoch [{epoch+1}] | Validation Loss: {avg_val_loss:.4f}")
+            tqdm.write(f"Epoch [{epoch+1}] | Validation Loss: {avg_val_loss:.4f}")
             scheduler.step(avg_val_loss)
 
             if config.checkpoint:
@@ -151,6 +150,7 @@ if __name__ == '__main__':
         m = int(16),
         validation = False,
         update_interval = 100,
+        compile=True,
     )
 
     try:
