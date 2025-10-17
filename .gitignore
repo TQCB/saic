@@ -6,8 +6,10 @@ ressources.md
 .env
 .home_env
 saic/test_loss.py
+profile.py
 TODO.md
 
+*.ipynb
 colab_train.ipynb
 colab_train_lite.ipynb
 saic/train_local.py
