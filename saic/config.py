@@ -19,7 +19,7 @@ class TrainingConfig(BaseModel):
     loss_lmbda: float = Field(0.01, gt=0, description='Lambda coefficient used in the loss as a weight for the distortion component')
     loss_fg_weight: float = Field(10, gt=0, description='Foreground coeffficient used in the loss as a weight for the importance of the foreground component.')
     schedule_patience: int = Field(5, ge=0, description="Scheduler patience, must be >= 0.")
-    grad_clip: bool = True
+    grad_clip: bool = False
     epochs: int = Field(1, gt=0, description="Number of training epochs, must be positive.")
     checkpoint: bool = False
     update_interval: int = Field(100, gt=0, description="Update interval, must be positive.")
